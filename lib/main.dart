@@ -39,6 +39,7 @@ class _MyHomePageState extends State<MyHomePage> {
   final _fileNameController = TextEditingController();
   
   String? _selectedFilePath;
+  String? _originalExtension;
   bool _isUploading = false;
   String _statusMessage = '';
   String _apiUrl = '';
@@ -103,9 +104,18 @@ class _MyHomePageState extends State<MyHomePage> {
   Future<void> _pickFile() async {
     final result = await FilePicker.pickFile(type: FileType.image);
     if (result != null && result.path != null) {
+      final fileName = result.path!.split('/').last;
+      final extIndex = fileName.lastIndexOf('.');
+      
       setState(() {
         _selectedFilePath = result.path;
-        _fileNameController.text = result.path!.split('/').last;
+        if (extIndex != -1) {
+          _fileNameController.text = fileName.substring(0, extIndex);
+          _originalExtension = fileName.substring(extIndex);
+        } else {
+          _fileNameController.text = fileName;
+          _originalExtension = '';
+        }
         _statusMessage = '';
       });
     }
@@ -131,13 +141,17 @@ class _MyHomePageState extends State<MyHomePage> {
       _isUploading = true;
       _statusMessage = 'Uploading...';
     });
+    
+    final finalFileName = _originalExtension != null 
+        ? '${_fileNameController.text.trim()}$_originalExtension'
+        : _fileNameController.text.trim();
 
     try {
       await UploadService.uploadFile(
         apiUrl: _apiUrl,
         filePath: _selectedFilePath!,
         folderPath: _folderPathController.text.trim(),
-        customFileName: _fileNameController.text.trim(),
+        customFileName: finalFileName,
       );
 
       setState(() {

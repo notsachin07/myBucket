@@ -137,12 +137,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
     if (confirm == true) {
       Navigator.of(context).pop(); // Close image details dialog
+      if (!mounted) return;
       
       // Show loading indicator
       showDialog(
-        context: context,
+        context: this.context,
         barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator()),
+        builder: (BuildContext dialogContext) => const Center(child: CircularProgressIndicator()),
       );
 
       try {
@@ -151,12 +152,14 @@ class _GalleryScreenState extends State<GalleryScreen> {
           fileName: file.fileName,
           folderPath: file.folderPath,
         );
-        Navigator.of(context).pop(); // Dismiss loading
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Image deleted successfully')));
+        if (!mounted) return;
+        Navigator.of(this.context).pop(); // Dismiss loading
+        ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(content: Text('Image deleted successfully')));
         _fetchFiles(); // Refresh gallery
       } catch (e) {
-        Navigator.of(context).pop(); // Dismiss loading
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+        if (!mounted) return;
+        Navigator.of(this.context).pop(); // Dismiss loading
+        ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(content: Text('Delete failed: $e')));
       }
     }
   }
