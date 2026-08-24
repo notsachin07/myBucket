@@ -117,3 +117,14 @@ app.*.symbols
 !**/ios/**/default.perspectivev3
 !/packages/flutter_tools/test/data/dart_dependencies_test/**/.packages
 !/dev/ci/**/Gemfile.lock
+
+android/
+
+ios/
+linux/
+macos/
+test/
+web/
+windows/
+analysis_options.yaml
+mybucket.iml
