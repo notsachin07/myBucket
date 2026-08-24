@@ -8,8 +8,12 @@ import traceback
 s3_client = boto3.client('s3', region_name=os.environ.get('AWS_REGION_VAL'))
 
 def lambda_handler(event, context):
+    # API Gateway REST API uses 'httpMethod'
+    # HTTP API or Lambda Function URLs use 'requestContext' -> 'http' -> 'method'
     http_method = event.get('httpMethod')
-    
+    if not http_method:
+        http_method = event.get('requestContext', {}).get('http', {}).get('method')
+        
     if http_method == 'GET':
         return handle_get()
     else:
@@ -43,6 +47,7 @@ def handle_get():
             folder_path_val = row[1]
             s3_url = row[2]
             content_type = row[3]
+            uploaded_at = row[4].isoformat() if row[4] else None
             
             # Construct the S3 key
             folder_path = folder_path_val.rstrip('/')
@@ -63,7 +68,8 @@ def handle_get():
                 'folderPath': folder_path_val,
                 'contentType': content_type,
                 's3Url': s3_url,
-                'previewUrl': presigned_url
+                'previewUrl': presigned_url,
+                'uploadedAt': uploaded_at
             })
             
         cursor.close()

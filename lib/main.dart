@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:myBucket/services/upload_service.dart';
-import 'package:myBucket/screens/gallery_screen.dart'; // Make sure package name matches pubspec.yaml
+import 'package:myBucket/screens/gallery_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -14,8 +16,9 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'S3 Uploader',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple, brightness: Brightness.light),
         useMaterial3: true,
       ),
       home: const MyHomePage(title: 'AWS S3 Upload App'),
@@ -32,18 +35,76 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  final _apiUrlController = TextEditingController();
   final _folderPathController = TextEditingController(text: 'uploads/');
   
   String? _selectedFilePath;
   bool _isUploading = false;
   String _statusMessage = '';
+  String _apiUrl = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _apiUrl = prefs.getString('api_url') ?? '';
+    });
+    
+    if (_apiUrl.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showSettingsDialog();
+      });
+    }
+  }
+
+  Future<void> _saveSettings(String url) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('api_url', url);
+    setState(() {
+      _apiUrl = url;
+    });
+  }
+
+  void _showSettingsDialog() {
+    final controller = TextEditingController(text: _apiUrl);
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('API Configuration'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'Lambda API URL',
+            hintText: 'https://xxxxx.execute-api.../prod/upload',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              if (controller.text.trim().isNotEmpty) {
+                _saveSettings(controller.text.trim());
+                Navigator.of(context).pop();
+              }
+            },
+            child: const Text('Save'),
+          )
+        ],
+      ),
+    );
+  }
 
   Future<void> _pickFile() async {
-    final result = await FilePicker.pickFile();
+    final result = await FilePicker.pickFile(type: FileType.image);
     if (result != null && result.path != null) {
       setState(() {
         _selectedFilePath = result.path;
+        _statusMessage = '';
       });
     }
   }
@@ -54,8 +115,8 @@ class _MyHomePageState extends State<MyHomePage> {
       return;
     }
     
-    if (_apiUrlController.text.trim().isEmpty) {
-      setState(() => _statusMessage = 'Please provide the Lambda API URL.');
+    if (_apiUrl.isEmpty) {
+      _showSettingsDialog();
       return;
     }
 
@@ -66,14 +127,14 @@ class _MyHomePageState extends State<MyHomePage> {
 
     try {
       await UploadService.uploadFile(
-        apiUrl: _apiUrlController.text.trim(),
+        apiUrl: _apiUrl,
         filePath: _selectedFilePath!,
         folderPath: _folderPathController.text.trim(),
       );
 
       setState(() {
         _statusMessage = 'Upload completed successfully!';
-        _selectedFilePath = null; // Reset selection on success
+        _selectedFilePath = null;
       });
     } catch (e) {
       setState(() {
@@ -88,7 +149,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   void dispose() {
-    _apiUrlController.dispose();
     _folderPathController.dispose();
     super.dispose();
   }
@@ -101,79 +161,124 @@ class _MyHomePageState extends State<MyHomePage> {
         title: Text(widget.title),
         actions: [
           IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
+            onPressed: _showSettingsDialog,
+          ),
+          IconButton(
             icon: const Icon(Icons.photo_library),
             tooltip: 'View Gallery',
             onPressed: () {
-              if (_apiUrlController.text.trim().isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please provide the Lambda API URL first.')),
-                );
+              if (_apiUrl.isEmpty) {
+                _showSettingsDialog();
                 return;
               }
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => GalleryScreen(apiUrl: _apiUrlController.text.trim()),
+                  builder: (context) => GalleryScreen(apiUrl: _apiUrl),
                 ),
               );
             },
           )
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            TextField(
-              controller: _apiUrlController,
-              decoration: const InputDecoration(
-                labelText: 'Lambda API URL',
-                hintText: 'https://xxxxx.execute-api.us-east-1.amazonaws.com/prod/upload',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             TextField(
               controller: _folderPathController,
-              decoration: const InputDecoration(
-                labelText: 'Target Folder Path',
-                hintText: 'e.g., images/profile',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: 'Target Folder',
+                prefixIcon: const Icon(Icons.folder_open),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _pickFile,
-              icon: const Icon(Icons.attach_file),
-              label: Text(_selectedFilePath == null ? 'Select File' : 'Change File'),
-            ),
-            if (_selectedFilePath != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Selected: ${_selectedFilePath!.split('/').last}',
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.bold),
+            const SizedBox(height: 32),
+            GestureDetector(
+              onTap: _pickFile,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                height: 250,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                    width: 2,
+                    style: BorderStyle.solid,
+                  ),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(18),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 300),
+                    child: _selectedFilePath != null
+                        ? Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Image.file(
+                                File(_selectedFilePath!),
+                                fit: BoxFit.cover,
+                                key: ValueKey(_selectedFilePath),
+                              ),
+                              Container(
+                                color: Colors.black45,
+                                child: const Center(
+                                  child: Icon(Icons.edit, color: Colors.white, size: 40),
+                                ),
+                              )
+                            ],
+                          )
+                        : Column(
+                            key: const ValueKey('empty'),
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.cloud_upload, size: 60, color: Theme.of(context).colorScheme.primary),
+                              const SizedBox(height: 16),
+                              const Text('Tap to select an image', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                            ],
+                          ),
+                  ),
+                ),
               ),
-            ],
+            ),
             const SizedBox(height: 32),
             ElevatedButton(
-              onPressed: _isUploading ? null : _upload,
+              onPressed: _isUploading || _selectedFilePath == null ? null : _upload,
               style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               child: _isUploading
-                  ? const CircularProgressIndicator()
-                  : const Text('Upload to S3'),
+                  ? const SizedBox(
+                      height: 24, width: 24,
+                      child: CircularProgressIndicator(strokeWidth: 3),
+                    )
+                  : const Text('Upload to S3', style: TextStyle(fontSize: 18)),
             ),
             const SizedBox(height: 24),
-            Text(
-              _statusMessage,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: _statusMessage.contains('failed') ? Colors.red : Colors.green,
-                fontWeight: FontWeight.bold,
+            AnimatedOpacity(
+              opacity: _statusMessage.isEmpty ? 0.0 : 1.0,
+              duration: const Duration(milliseconds: 300),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: _statusMessage.contains('failed') ? Colors.red.shade100 : Colors.green.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  _statusMessage,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _statusMessage.contains('failed') ? Colors.red.shade900 : Colors.green.shade900,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             )
           ],
