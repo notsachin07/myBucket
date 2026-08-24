@@ -26,7 +26,7 @@ jobs:
         python-version: '3.10'
 
     - name: Install dependencies
-      run: pip install -r requirements.txt -t .
+      run: pip install -r requirements.txt -t . --platform manylinux2014_x86_64 --only-binary=:all:
 
     - name: Zip Lambda function
       run: zip -r function.zip .
