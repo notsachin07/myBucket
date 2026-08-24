@@ -1,7 +1,7 @@
 import json
 import os
 import boto3
-import pymssql
+import pytds
 
 s3_client = boto3.client('s3', region_name=os.environ.get('AWS_REGION_VAL'))
 
@@ -22,13 +22,13 @@ def handle_get():
         db_name = os.environ.get('DB_NAME')
         bucket_name = os.environ.get('S3_BUCKET_NAME')
         
-        conn = pymssql.connect(
+        conn = pytds.connect(
             server=db_server,
             user=db_user,
             password=db_password,
             database=db_name
         )
-        cursor = conn.cursor(as_dict=True)
+        cursor = conn.cursor()
         
         # Fetch the most recently uploaded files
         cursor.execute("SELECT FileName, FolderPath, S3Url, ContentType, UploadedAt FROM Files ORDER BY UploadedAt DESC")
@@ -36,9 +36,14 @@ def handle_get():
         
         results = []
         for row in rows:
+            file_name = row[0]
+            folder_path_val = row[1]
+            s3_url = row[2]
+            content_type = row[3]
+            
             # Construct the S3 key
-            folder_path = row['FolderPath'].rstrip('/')
-            s3_key = f"{folder_path}/{row['FileName']}"
+            folder_path = folder_path_val.rstrip('/')
+            s3_key = f"{folder_path}/{file_name}"
             
             # Generate a presigned GET URL for securely viewing the image
             presigned_url = s3_client.generate_presigned_url(
@@ -51,10 +56,10 @@ def handle_get():
             )
             
             results.append({
-                'fileName': row['FileName'],
-                'folderPath': row['FolderPath'],
-                'contentType': row['ContentType'],
-                's3Url': row['S3Url'],
+                'fileName': file_name,
+                'folderPath': folder_path_val,
+                'contentType': content_type,
+                's3Url': s3_url,
                 'previewUrl': presigned_url
             })
             
@@ -116,7 +121,7 @@ def handle_post(event):
         db_password = os.environ.get('DB_PASSWORD')
         db_name = os.environ.get('DB_NAME')
         
-        conn = pymssql.connect(
+        conn = pytds.connect(
             server=db_server,
             user=db_user,
             password=db_password,
