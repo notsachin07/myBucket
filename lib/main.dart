@@ -18,7 +18,7 @@ class MyApp extends StatelessWidget {
       title: 'S3 Uploader',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple, brightness: Brightness.light),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueGrey, brightness: Brightness.light),
         useMaterial3: true,
       ),
       home: const MyHomePage(title: 'AWS S3 Upload App'),
@@ -36,6 +36,7 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   final _folderPathController = TextEditingController(text: 'uploads/');
+  final _fileNameController = TextEditingController();
   
   String? _selectedFilePath;
   bool _isUploading = false;
@@ -104,6 +105,7 @@ class _MyHomePageState extends State<MyHomePage> {
     if (result != null && result.path != null) {
       setState(() {
         _selectedFilePath = result.path;
+        _fileNameController.text = result.path!.split('/').last;
         _statusMessage = '';
       });
     }
@@ -119,6 +121,11 @@ class _MyHomePageState extends State<MyHomePage> {
       _showSettingsDialog();
       return;
     }
+    
+    if (_fileNameController.text.trim().isEmpty) {
+      setState(() => _statusMessage = 'File name cannot be empty.');
+      return;
+    }
 
     setState(() {
       _isUploading = true;
@@ -130,6 +137,7 @@ class _MyHomePageState extends State<MyHomePage> {
         apiUrl: _apiUrl,
         filePath: _selectedFilePath!,
         folderPath: _folderPathController.text.trim(),
+        customFileName: _fileNameController.text.trim(),
       );
 
       setState(() {
@@ -150,6 +158,7 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void dispose() {
     _folderPathController.dispose();
+    _fileNameController.dispose();
     super.dispose();
   }
 
@@ -247,6 +256,16 @@ class _MyHomePageState extends State<MyHomePage> {
                 ),
               ),
             ),
+            const SizedBox(height: 16),
+            if (_selectedFilePath != null)
+              TextField(
+                controller: _fileNameController,
+                decoration: InputDecoration(
+                  labelText: 'Rename File',
+                  prefixIcon: const Icon(Icons.edit),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
             const SizedBox(height: 32),
             ElevatedButton(
               onPressed: _isUploading || _selectedFilePath == null ? null : _upload,

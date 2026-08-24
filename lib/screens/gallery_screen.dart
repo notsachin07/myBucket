@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:myBucket/models/uploaded_file.dart';
 import 'package:myBucket/services/upload_service.dart';
 
@@ -70,9 +71,18 @@ class _GalleryScreenState extends State<GalleryScreen> {
                       ),
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white, shadows: [Shadow(color: Colors.black, blurRadius: 4)]),
-                    onPressed: () => Navigator.of(context).pop(),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.redAccent, shadows: [Shadow(color: Colors.black, blurRadius: 4)]),
+                        onPressed: () => _confirmDelete(context, file),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white, shadows: [Shadow(color: Colors.black, blurRadius: 4)]),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -87,6 +97,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                     _buildMetaRow('Folder:', file.folderPath),
                     _buildMetaRow('Date:', _formatDate(file.uploadedAt)),
                     _buildMetaRow('Type:', file.s3Url.split('.').last.toUpperCase()),
+                    _buildUrlRow(context, 'URL:', file.s3Url),
                   ],
                 ),
               )
@@ -107,6 +118,49 @@ class _GalleryScreenState extends State<GalleryScreen> {
     }
   }
 
+  Future<void> _confirmDelete(BuildContext context, UploadedFile file) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Image'),
+        content: const Text('Are you sure you want to delete this image from the server? This action cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true), 
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      Navigator.of(context).pop(); // Close image details dialog
+      
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      try {
+        await UploadService.deleteFile(
+          apiUrl: widget.apiUrl,
+          fileName: file.fileName,
+          folderPath: file.folderPath,
+        );
+        Navigator.of(context).pop(); // Dismiss loading
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Image deleted successfully')));
+        _fetchFiles(); // Refresh gallery
+      } catch (e) {
+        Navigator.of(context).pop(); // Dismiss loading
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $e')));
+      }
+    }
+  }
+
   Widget _buildMetaRow(String label, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -115,6 +169,34 @@ class _GalleryScreenState extends State<GalleryScreen> {
         children: [
           SizedBox(width: 60, child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
           Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUrlRow(BuildContext context, String label, String url) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(width: 60, child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+          Expanded(
+            child: Text(url, 
+              style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.blue),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.copy, size: 20),
+            padding: const EdgeInsets.only(left: 8.0),
+            constraints: const BoxConstraints(),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: url));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('URL copied to clipboard!'), duration: Duration(seconds: 2)),
+              );
+            },
+          ),
         ],
       ),
     );

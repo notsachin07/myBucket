@@ -15,6 +15,7 @@ class UploadService {
     required String apiUrl,
     required String filePath,
     required String folderPath,
+    String? customFileName,
   }) async {
     try {
       File file = File(filePath);
@@ -22,7 +23,7 @@ class UploadService {
         throw Exception('File does not exist: $filePath');
       }
 
-      String fileName = path.basename(filePath);
+      String fileName = customFileName ?? path.basename(filePath);
       String mimeType = lookupMimeType(filePath) ?? 'application/octet-stream';
 
       // Check if file is an image, if so compress and convert to webp
@@ -42,7 +43,9 @@ class UploadService {
 
         if (compressedFile != null) {
           file = File(compressedFile.path);
-          fileName = path.basename(compressedFile.path);
+          fileName = customFileName != null 
+              ? '${path.basenameWithoutExtension(customFileName)}.webp' 
+              : path.basename(compressedFile.path);
           mimeType = 'image/webp';
         }
       }
@@ -99,6 +102,24 @@ class UploadService {
       return data;
     } else {
       throw Exception('Failed to fetch photos: ${response.statusCode}');
+    }
+  }
+  static Future<void> deleteFile({
+    required String apiUrl,
+    required String fileName,
+    required String folderPath,
+  }) async {
+    final response = await http.delete(
+      Uri.parse(apiUrl),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'fileName': fileName,
+        'folderPath': folderPath,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to delete file: ${response.body}');
     }
   }
 }

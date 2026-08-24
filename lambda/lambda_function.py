@@ -16,6 +16,8 @@ def lambda_handler(event, context):
         
     if http_method == 'GET':
         return handle_get()
+    elif http_method == 'DELETE':
+        return handle_delete(event)
     else:
         # Default to POST (upload generation)
         return handle_post(event)
@@ -177,6 +179,71 @@ def handle_post(event):
             'headers': {'Access-Control-Allow-Origin': '*'},
             'body': json.dumps({
                 'message': 'Internal Server Error in POST', 
+                'error': str(e),
+                'trace': traceback.format_exc()
+            })
+        }
+
+def handle_delete(event):
+    try:
+        body = json.loads(event.get('body', '{}'))
+        file_name = body.get('fileName')
+        folder_path = body.get('folderPath')
+        
+        if not file_name or not folder_path:
+            return {
+                'statusCode': 400,
+                'headers': {'Access-Control-Allow-Origin': '*'},
+                'body': json.dumps({'message': 'Missing fileName or folderPath in request body'})
+            }
+            
+        folder_path = folder_path.rstrip('/')
+        s3_key = f"{folder_path}/{file_name}"
+        bucket_name = os.environ.get('S3_BUCKET_NAME')
+        
+        # 1. Delete from S3
+        s3_client.delete_object(Bucket=bucket_name, Key=s3_key)
+        
+        # 2. Delete from Azure SQL Database
+        db_server = os.environ.get('DB_SERVER')
+        db_user = os.environ.get('DB_USER')
+        db_password = os.environ.get('DB_PASSWORD')
+        db_name = os.environ.get('DB_NAME')
+        
+        conn = pytds.connect(
+            server=db_server,
+            user=db_user,
+            password=db_password,
+            database=db_name,
+            cafile=certifi.where()
+        )
+        cursor = conn.cursor()
+        
+        delete_query = "DELETE FROM Files WHERE FileName = %s AND FolderPath = %s"
+        cursor.execute(delete_query, (file_name, folder_path))
+        conn.commit()
+        
+        cursor.close()
+        conn.close()
+        
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type',
+                'Access-Control-Allow-Methods': 'OPTIONS,GET,POST,DELETE'
+            },
+            'body': json.dumps({'message': 'File deleted successfully'})
+        }
+        
+    except Exception as e:
+        print("Error deleting file:", str(e))
+        traceback.print_exc()
+        return {
+            'statusCode': 500,
+            'headers': {'Access-Control-Allow-Origin': '*'},
+            'body': json.dumps({
+                'message': 'Internal Server Error in DELETE', 
                 'error': str(e),
                 'trace': traceback.format_exc()
             })
