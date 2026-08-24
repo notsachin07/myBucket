@@ -2,6 +2,8 @@ import json
 import os
 import boto3
 import pytds
+import certifi
+import traceback
 
 s3_client = boto3.client('s3', region_name=os.environ.get('AWS_REGION_VAL'))
 
@@ -26,7 +28,8 @@ def handle_get():
             server=db_server,
             user=db_user,
             password=db_password,
-            database=db_name
+            database=db_name,
+            cafile=certifi.where()
         )
         cursor = conn.cursor()
         
@@ -77,10 +80,15 @@ def handle_get():
         }
     except Exception as e:
         print("Error fetching files:", str(e))
+        traceback.print_exc()
         return {
             'statusCode': 500,
             'headers': {'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps({'message': 'Internal Server Error', 'error': str(e)})
+            'body': json.dumps({
+                'message': 'Internal Server Error in GET',
+                'error': str(e),
+                'trace': traceback.format_exc()
+            })
         }
 
 def handle_post(event):
@@ -125,7 +133,8 @@ def handle_post(event):
             server=db_server,
             user=db_user,
             password=db_password,
-            database=db_name
+            database=db_name,
+            cafile=certifi.where()
         )
         cursor = conn.cursor()
         
@@ -156,8 +165,13 @@ def handle_post(event):
         
     except Exception as e:
         print("Error processing request:", str(e))
+        traceback.print_exc()
         return {
             'statusCode': 500,
             'headers': {'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps({'message': 'Internal Server Error', 'error': str(e)})
+            'body': json.dumps({
+                'message': 'Internal Server Error in POST', 
+                'error': str(e),
+                'trace': traceback.format_exc()
+            })
         }

@@ -1,2 +1,4 @@
 boto3
 python-tds
+certifi
+pyOpenSSL==22.1.0
