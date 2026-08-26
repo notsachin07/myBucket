@@ -14,7 +14,17 @@ def lambda_handler(event, context):
     if not http_method:
         http_method = event.get('requestContext', {}).get('http', {}).get('method')
         
-    if http_method == 'GET':
+    if http_method == 'OPTIONS':
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,Authorization',
+                'Access-Control-Allow-Methods': 'OPTIONS,GET,POST,PUT,DELETE'
+            },
+            'body': ''
+        }
+    elif http_method == 'GET':
         return handle_get()
     elif http_method == 'DELETE':
         return handle_delete(event)
