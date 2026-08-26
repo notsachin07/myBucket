@@ -1,0 +1,6 @@
+{
+  "version": 2,
+  "name": "mybucket-web",
+  "cleanUrls": true,
+  "trailingSlash": false
+}
