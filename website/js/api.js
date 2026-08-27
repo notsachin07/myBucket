@@ -80,37 +80,74 @@ const ApiService = {
     }
   },
 
+  // Throttling state
+  _isUploading: false,
+  _isFetching: false,
+
   // Combined upload flow
   uploadFile: async (apiUrl, file, folderPath, customFileName) => {
-    let fileName = customFileName || file.name;
-    let mimeType = file.type || 'application/octet-stream';
-    let fileBlob = file;
-
-    // Compress if it's an image
-    if (mimeType.startsWith('image/')) {
-      fileBlob = await ApiService.compressImage(file, 0.75);
-      
-      // Update extension to .webp
-      const lastDot = fileName.lastIndexOf('.');
-      if (lastDot !== -1) {
-        fileName = fileName.substring(0, lastDot) + '.webp';
-      } else {
-        fileName += '.webp';
-      }
-      mimeType = 'image/webp';
+    if (ApiService._isUploading) {
+      throw new Error("An upload is already in progress. Please wait.");
     }
+    
+    try {
+      ApiService._isUploading = true;
+      let fileName = customFileName || file.name;
+      let mimeType = file.type || 'application/octet-stream';
+      let fileBlob = file;
 
-    const presignedUrl = await ApiService.getPresignedUrl(apiUrl, fileName, folderPath, mimeType);
-    await ApiService.uploadToS3(presignedUrl, fileBlob, mimeType);
+      // Compress if it's an image
+      if (mimeType.startsWith('image/')) {
+        fileBlob = await ApiService.compressImage(file, 0.75);
+        
+        // Update extension to .webp
+        const lastDot = fileName.lastIndexOf('.');
+        if (lastDot !== -1) {
+          fileName = fileName.substring(0, lastDot) + '.webp';
+        } else {
+          fileName += '.webp';
+        }
+        mimeType = 'image/webp';
+      }
+
+      const presignedUrl = await ApiService.getPresignedUrl(apiUrl, fileName, folderPath, mimeType);
+      await ApiService.uploadToS3(presignedUrl, fileBlob, mimeType);
+    } finally {
+      ApiService._isUploading = false;
+    }
   },
 
-  // Fetch all uploaded files
-  fetchUploadedFiles: async (apiUrl) => {
-    const response = await fetch(apiUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch photos: ${response.status}`);
+  // Fetch all uploaded files (with caching and throttling)
+  fetchUploadedFiles: async (apiUrl, forceRefresh = false) => {
+    if (ApiService._isFetching) {
+      throw new Error("A fetch request is already in progress. Please wait.");
     }
-    return response.json();
+
+    try {
+      ApiService._isFetching = true;
+
+      // Check local storage if not forcing refresh
+      if (!forceRefresh) {
+        const cachedData = localStorage.getItem('gallery_cache');
+        if (cachedData) {
+          return JSON.parse(cachedData);
+        }
+      }
+
+      const response = await fetch(apiUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch photos: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Save to local storage
+      localStorage.setItem('gallery_cache', JSON.stringify(data));
+      
+      return data;
+    } finally {
+      ApiService._isFetching = false;
+    }
   },
 
   // Delete file

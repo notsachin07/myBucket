@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
     galleryMessage.style.color = isError ? 'var(--danger-color)' : 'var(--text-muted)';
   };
 
-  const loadGallery = async () => {
+  const loadGallery = async (forceRefresh = false) => {
     galleryContent.innerHTML = '';
     galleryLoader.style.display = 'inline-block';
     galleryMessage.textContent = 'Loading photos...';
@@ -54,7 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 1000);
 
     try {
-      const files = await ApiService.fetchUploadedFiles(apiUrl);
+      const files = await ApiService.fetchUploadedFiles(apiUrl, forceRefresh);
       clearInterval(timerInterval);
       
       if (!files || files.length === 0) {
@@ -179,7 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
         await ApiService.deleteFile(apiUrl, currentSelectedFile.fileName, currentSelectedFile.folderPath);
         alert('Image deleted successfully');
         closeModal();
-        loadGallery();
+        loadGallery(true); // Force refresh after delete
       } catch (error) {
         alert(`Delete failed: ${error.message}`);
       } finally {
@@ -188,8 +188,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  btnRefresh.addEventListener('click', loadGallery);
+  btnRefresh.addEventListener('click', () => loadGallery(true));
 
-  // Initial Load
-  loadGallery();
+  // Initial Load (use cache if available)
+  loadGallery(false);
 });

@@ -5,8 +5,11 @@ import 'package:mime/mime.dart';
 import 'package:path/path.dart' as path;
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class UploadService {
+  static bool _isUploading = false;
+  static bool _isFetching = false;
   /// Calls the AWS Lambda to get a presigned URL, then uploads the file to S3.
   /// [apiUrl] The Lambda function endpoint URL
   /// [filePath] The local path of the file to upload
@@ -17,6 +20,11 @@ class UploadService {
     required String folderPath,
     String? customFileName,
   }) async {
+    if (_isUploading) {
+      throw StateError('An upload is already in progress. Please wait.');
+    }
+    
+    _isUploading = true;
     try {
       File file = File(filePath);
       if (!await file.exists()) {
@@ -90,18 +98,40 @@ class UploadService {
     } catch (e) {
       print('Upload failed: $e');
       rethrow;
+    } finally {
+      _isUploading = false;
     }
   }
 
   /// Fetches the list of uploaded files from the Lambda GET endpoint.
-  static Future<List<dynamic>> fetchUploadedFiles(String apiUrl) async {
-    final response = await http.get(Uri.parse(apiUrl));
+  static Future<List<dynamic>> fetchUploadedFiles(String apiUrl, {bool forceRefresh = false}) async {
+    if (_isFetching) {
+      throw StateError('A fetch request is already in progress. Please wait.');
+    }
     
-    if (response.statusCode == 200) {
-      final List<dynamic> data = jsonDecode(response.body);
-      return data;
-    } else {
-      throw Exception('Failed to fetch photos: ${response.statusCode}');
+    _isFetching = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      if (!forceRefresh) {
+        final cachedData = prefs.getString('gallery_cache');
+        if (cachedData != null) {
+          return jsonDecode(cachedData);
+        }
+      }
+
+      final response = await http.get(Uri.parse(apiUrl));
+      
+      if (response.statusCode == 200) {
+        // Save to cache
+        await prefs.setString('gallery_cache', response.body);
+        final List<dynamic> data = jsonDecode(response.body);
+        return data;
+      } else {
+        throw Exception('Failed to fetch photos: ${response.statusCode}');
+      }
+    } finally {
+      _isFetching = false;
     }
   }
   static Future<void> deleteFile({

@@ -21,9 +21,9 @@ class _GalleryScreenState extends State<GalleryScreen> {
     _fetchFiles();
   }
 
-  void _fetchFiles() {
+  void _fetchFiles({bool forceRefresh = false}) {
     setState(() {
-      _futureFiles = UploadService.fetchUploadedFiles(widget.apiUrl)
+      _futureFiles = UploadService.fetchUploadedFiles(widget.apiUrl, forceRefresh: forceRefresh)
           .then((data) => data.map((json) => UploadedFile.fromJson(json)).toList());
     });
   }
@@ -155,7 +155,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
         if (!mounted) return;
         Navigator.of(this.context).pop(); // Dismiss loading
         ScaffoldMessenger.of(this.context).showSnackBar(const SnackBar(content: Text('Image deleted successfully')));
-        _fetchFiles(); // Refresh gallery
+        _fetchFiles(forceRefresh: true); // Refresh gallery
       } catch (e) {
         if (!mounted) return;
         Navigator.of(this.context).pop(); // Dismiss loading
@@ -213,7 +213,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _fetchFiles,
+            onPressed: () => _fetchFiles(forceRefresh: true),
           )
         ],
       ),
