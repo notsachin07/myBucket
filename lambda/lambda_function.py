@@ -1,11 +1,18 @@
 import json
 import os
 import boto3
-import pytds
-import certifi
 import traceback
+from supabase import create_client, Client
 
+# S3 client
 s3_client = boto3.client('s3', region_name=os.environ.get('AWS_REGION_VAL'))
+
+def get_supabase_client() -> Client:
+    supabase_url = os.environ.get('SUPABASE_URL')
+    supabase_key = os.environ.get('SUPABASE_KEY')
+    if not supabase_url or not supabase_key:
+        raise ValueError("SUPABASE_URL and SUPABASE_KEY must be set in environment variables.")
+    return create_client(supabase_url, supabase_key)
 
 def lambda_handler(event, context):
     # API Gateway REST API uses 'httpMethod'
@@ -34,32 +41,23 @@ def lambda_handler(event, context):
 
 def handle_get():
     try:
-        db_server = os.environ.get('DB_SERVER')
-        db_user = os.environ.get('DB_USER')
-        db_password = os.environ.get('DB_PASSWORD')
-        db_name = os.environ.get('DB_NAME')
         bucket_name = os.environ.get('S3_BUCKET_NAME')
-        
-        conn = pytds.connect(
-            server=db_server,
-            user=db_user,
-            password=db_password,
-            database=db_name,
-            cafile=certifi.where()
-        )
-        cursor = conn.cursor()
+        supabase = get_supabase_client()
         
         # Fetch the most recently uploaded files
-        cursor.execute("SELECT FileName, FolderPath, S3Url, ContentType, UploadedAt FROM Files ORDER BY UploadedAt DESC")
-        rows = cursor.fetchall()
+        response = supabase.table('files').select(
+            'file_name, folder_path, s3_url, content_type, uploaded_at'
+        ).order('uploaded_at', desc=True).execute()
+        
+        rows = response.data
         
         results = []
         for row in rows:
-            file_name = row[0]
-            folder_path_val = row[1]
-            s3_url = row[2]
-            content_type = row[3]
-            uploaded_at = row[4].isoformat() if row[4] else None
+            file_name = row.get('file_name')
+            folder_path_val = row.get('folder_path')
+            s3_url = row.get('s3_url')
+            content_type = row.get('content_type')
+            uploaded_at = row.get('uploaded_at')
             
             # Construct the S3 key
             folder_path = folder_path_val.rstrip('/')
@@ -84,9 +82,6 @@ def handle_get():
                 'uploadedAt': uploaded_at
             })
             
-        cursor.close()
-        conn.close()
-        
         return {
             'statusCode': 200,
             'headers': {
@@ -141,30 +136,14 @@ def handle_post(event):
             ExpiresIn=900 # 15 minutes
         )
         
-        # 2. Insert record into Azure SQL Database
-        db_server = os.environ.get('DB_SERVER')
-        db_user = os.environ.get('DB_USER')
-        db_password = os.environ.get('DB_PASSWORD')
-        db_name = os.environ.get('DB_NAME')
-        
-        conn = pytds.connect(
-            server=db_server,
-            user=db_user,
-            password=db_password,
-            database=db_name,
-            cafile=certifi.where()
-        )
-        cursor = conn.cursor()
-        
-        insert_query = """
-            INSERT INTO Files (FileName, FolderPath, S3Url, ContentType)
-            VALUES (%s, %s, %s, %s)
-        """
-        cursor.execute(insert_query, (file_name, folder_path, s3_url, content_type))
-        conn.commit()
-        
-        cursor.close()
-        conn.close()
+        # 2. Insert record into Supabase Database
+        supabase = get_supabase_client()
+        supabase.table('files').insert({
+            'file_name': file_name,
+            'folder_path': folder_path,
+            's3_url': s3_url,
+            'content_type': content_type
+        }).execute()
         
         # 3. Return the presigned URL
         return {
@@ -214,27 +193,9 @@ def handle_delete(event):
         # 1. Delete from S3
         s3_client.delete_object(Bucket=bucket_name, Key=s3_key)
         
-        # 2. Delete from Azure SQL Database
-        db_server = os.environ.get('DB_SERVER')
-        db_user = os.environ.get('DB_USER')
-        db_password = os.environ.get('DB_PASSWORD')
-        db_name = os.environ.get('DB_NAME')
-        
-        conn = pytds.connect(
-            server=db_server,
-            user=db_user,
-            password=db_password,
-            database=db_name,
-            cafile=certifi.where()
-        )
-        cursor = conn.cursor()
-        
-        delete_query = "DELETE FROM Files WHERE FileName = %s AND FolderPath = %s"
-        cursor.execute(delete_query, (file_name, folder_path))
-        conn.commit()
-        
-        cursor.close()
-        conn.close()
+        # 2. Delete from Supabase Database
+        supabase = get_supabase_client()
+        supabase.table('files').delete().eq('file_name', file_name).eq('folder_path', folder_path).execute()
         
         return {
             'statusCode': 200,
