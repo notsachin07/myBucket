@@ -117,7 +117,7 @@ const ApiService = {
     }
   },
 
-  // Fetch all uploaded files (with caching and throttling)
+  // Fetch all uploaded files (with caching and delta sync)
   fetchUploadedFiles: async (apiUrl, forceRefresh = false) => {
     if (ApiService._isFetching) {
       throw new Error("A fetch request is already in progress. Please wait.");
@@ -125,29 +125,78 @@ const ApiService = {
 
     try {
       ApiService._isFetching = true;
+      let cachedData = [];
+      let lastSync = null;
 
-      // Check local storage if not forcing refresh
       if (!forceRefresh) {
-        const cachedData = localStorage.getItem('gallery_cache');
-        if (cachedData) {
-          return JSON.parse(cachedData);
+        const cacheString = localStorage.getItem('gallery_cache');
+        if (cacheString) {
+          cachedData = JSON.parse(cacheString);
         }
+        lastSync = localStorage.getItem('gallery_last_sync');
+      } else {
+        localStorage.removeItem('gallery_cache');
+        localStorage.removeItem('gallery_last_sync');
       }
 
-      const response = await fetch(apiUrl);
+      const headers = {};
+      if (lastSync) {
+        headers['last-sync'] = lastSync;
+      }
+
+      const response = await fetch(apiUrl, { headers });
       if (!response.ok) {
         throw new Error(`Failed to fetch photos: ${response.status}`);
       }
       
-      const data = await response.json();
+      const newItems = await response.json();
       
-      // Save to local storage
-      localStorage.setItem('gallery_cache', JSON.stringify(data));
+      if (newItems.length > 0) {
+        // Merge new items into cache
+        const itemMap = new Map();
+        // Add existing items
+        cachedData.forEach(item => {
+          itemMap.set(item.folderPath + '/' + item.fileName, item);
+        });
+        
+        // Add/Update new items (and remove soft-deleted ones)
+        newItems.forEach(item => {
+          const key = item.folderPath + '/' + item.fileName;
+          if (item.isDeleted) {
+            itemMap.delete(key);
+          } else {
+            itemMap.set(key, item);
+          }
+        });
+        
+        cachedData = Array.from(itemMap.values());
+        // Sort by uploadedAt desc
+        cachedData.sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt));
+        
+        localStorage.setItem('gallery_cache', JSON.stringify(cachedData));
+        localStorage.setItem('gallery_last_sync', new Date().toISOString());
+      }
       
-      return data;
+      return cachedData;
     } finally {
       ApiService._isFetching = false;
     }
+  },
+
+  // Batch fetch presigned URLs for lazy loading
+  fetchPresignedUrls: async (apiUrl, files) => {
+    const response = await fetch(apiUrl + '?action=presign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch presigned URLs: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.presignedUrls || {};
   },
 
   // Delete file
