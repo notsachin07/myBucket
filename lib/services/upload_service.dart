@@ -112,21 +112,60 @@ class UploadService {
     _isFetching = true;
     try {
       final prefs = await SharedPreferences.getInstance();
+      List<dynamic> cachedList = [];
+      String? lastSync;
 
       if (!forceRefresh) {
         final cachedData = prefs.getString('gallery_cache');
         if (cachedData != null) {
-          return jsonDecode(cachedData);
+          cachedList = jsonDecode(cachedData);
         }
+        lastSync = prefs.getString('gallery_last_sync');
+      } else {
+        await prefs.remove('gallery_cache');
+        await prefs.remove('gallery_last_sync');
       }
 
-      final response = await http.get(Uri.parse(apiUrl));
+      final Map<String, String> headers = {};
+      if (lastSync != null) {
+        headers['last-sync'] = lastSync;
+      }
+
+      final response = await http.get(Uri.parse(apiUrl), headers: headers);
       
       if (response.statusCode == 200) {
-        // Save to cache
-        await prefs.setString('gallery_cache', response.body);
-        final List<dynamic> data = jsonDecode(response.body);
-        return data;
+        final List<dynamic> newItems = jsonDecode(response.body);
+        
+        if (newItems.isNotEmpty) {
+          final map = <String, Map<String, dynamic>>{};
+          
+          for (var item in cachedList) {
+            final m = Map<String, dynamic>.from(item);
+            map['${m['folderPath']}/${m['fileName']}'] = m;
+          }
+          
+          for (var item in newItems) {
+            final m = Map<String, dynamic>.from(item);
+            final key = '${m['folderPath']}/${m['fileName']}';
+            if (m['isDeleted'] == true) {
+              map.remove(key);
+            } else {
+              map[key] = m;
+            }
+          }
+          
+          cachedList = map.values.toList();
+          cachedList.sort((a, b) {
+            final da = DateTime.tryParse(a['uploadedAt'] ?? '') ?? DateTime.now();
+            final db = DateTime.tryParse(b['uploadedAt'] ?? '') ?? DateTime.now();
+            return db.compareTo(da);
+          });
+          
+          await prefs.setString('gallery_cache', jsonEncode(cachedList));
+          await prefs.setString('gallery_last_sync', DateTime.now().toUtc().toIso8601String());
+        }
+        
+        return cachedList;
       } else {
         throw Exception('Failed to fetch photos: ${response.statusCode}');
       }
@@ -134,6 +173,23 @@ class UploadService {
       _isFetching = false;
     }
   }
+
+  /// Batch fetch presigned URLs for lazy loading
+  static Future<Map<String, dynamic>> fetchPresignedUrls(String apiUrl, List<Map<String, String>> files) async {
+    final response = await http.post(
+      Uri.parse('$apiUrl?action=presign'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'files': files}),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['presignedUrls'] ?? {};
+    } else {
+      throw Exception('Failed to fetch presigned URLs: ${response.body}');
+    }
+  }
+
   static Future<void> deleteFile({
     required String apiUrl,
     required String fileName,

@@ -2,14 +2,14 @@ class UploadedFile {
   final String fileName;
   final String folderPath;
   final String s3Url;
-  final String previewUrl;
+  String? previewUrl;
   final String? uploadedAt;
 
   UploadedFile({
     required this.fileName,
     required this.folderPath,
     required this.s3Url,
-    required this.previewUrl,
+    this.previewUrl,
     this.uploadedAt,
   });
 

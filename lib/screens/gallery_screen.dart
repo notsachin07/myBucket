@@ -61,7 +61,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                 children: [
                   InteractiveViewer(
                     child: Image.network(
-                      file.previewUrl,
+                      file.previewUrl ?? '',
                       fit: BoxFit.contain,
                       height: MediaQuery.of(context).size.height * 0.5,
                       width: double.infinity,
@@ -268,15 +268,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                           child: Stack(
                             fit: StackFit.expand,
                             children: [
-                              Image.network(
-                                file.previewUrl,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
-                                loadingBuilder: (context, child, progress) {
-                                  if (progress == null) return child;
-                                  return const Center(child: CircularProgressIndicator(strokeWidth: 2));
-                                },
-                              ),
+                              LazyImageWidget(file: file, apiUrl: widget.apiUrl),
                               Positioned(
                                 bottom: 0, left: 0, right: 0,
                                 child: Container(
@@ -303,6 +295,69 @@ class _GalleryScreenState extends State<GalleryScreen> {
           );
         },
       ),
+    );
+  }
+}
+
+class LazyImageWidget extends StatefulWidget {
+  final UploadedFile file;
+  final String apiUrl;
+  const LazyImageWidget({super.key, required this.file, required this.apiUrl});
+
+  @override
+  State<LazyImageWidget> createState() => _LazyImageWidgetState();
+}
+
+class _LazyImageWidgetState extends State<LazyImageWidget> {
+  bool _isLoading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUrl();
+  }
+
+  Future<void> _loadUrl() async {
+    if (widget.file.previewUrl != null && widget.file.previewUrl!.isNotEmpty) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+    
+    try {
+      final urls = await UploadService.fetchPresignedUrls(widget.apiUrl, [
+        {'fileName': widget.file.fileName, 'folderPath': widget.file.folderPath}
+      ]);
+      final key = '${widget.file.folderPath}/${widget.file.fileName}';
+      if (mounted) {
+        setState(() {
+          widget.file.previewUrl = urls[key];
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+    if (_error != null || widget.file.previewUrl == null) return const Icon(Icons.broken_image, color: Colors.grey);
+    
+    return Image.network(
+      widget.file.previewUrl!,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+      },
     );
   }
 }
