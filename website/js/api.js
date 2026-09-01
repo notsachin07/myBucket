@@ -83,6 +83,7 @@ const ApiService = {
   // Throttling state
   _isUploading: false,
   _isFetching: false,
+  _lastFetchTime: 0,
 
   // Combined upload flow
   uploadFile: async (apiUrl, file, folderPath, customFileName) => {
@@ -119,6 +120,11 @@ const ApiService = {
 
   // Fetch all uploaded files (with caching and delta sync)
   fetchUploadedFiles: async (apiUrl, forceRefresh = false) => {
+    const now = Date.now();
+    if (now - ApiService._lastFetchTime < 3000) {
+      throw new Error("Please wait 3 seconds before refreshing again.");
+    }
+
     if (ApiService._isFetching) {
       throw new Error("A fetch request is already in progress. Please wait.");
     }
@@ -131,12 +137,16 @@ const ApiService = {
       if (!forceRefresh) {
         const cacheString = localStorage.getItem('gallery_cache');
         if (cacheString) {
+          // If we have cache and are not forced to refresh, return it instantly!
+          // No API call is made. User must click Refresh to see images from other devices.
+          return JSON.parse(cacheString);
+        }
+      } else {
+        const cacheString = localStorage.getItem('gallery_cache');
+        if (cacheString) {
           cachedData = JSON.parse(cacheString);
         }
         lastSync = localStorage.getItem('gallery_last_sync');
-      } else {
-        localStorage.removeItem('gallery_cache');
-        localStorage.removeItem('gallery_last_sync');
       }
 
       const headers = {};
@@ -177,6 +187,7 @@ const ApiService = {
         localStorage.setItem('gallery_last_sync', new Date().toISOString());
       }
       
+      ApiService._lastFetchTime = Date.now();
       return cachedData;
     } finally {
       ApiService._isFetching = false;

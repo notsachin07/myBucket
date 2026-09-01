@@ -103,8 +103,15 @@ class UploadService {
     }
   }
 
+  static int _lastFetchTime = 0;
+
   /// Fetches the list of uploaded files from the Lambda GET endpoint.
   static Future<List<dynamic>> fetchUploadedFiles(String apiUrl, {bool forceRefresh = false}) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastFetchTime < 3000) {
+      throw StateError('Please wait 3 seconds before refreshing again.');
+    }
+
     if (_isFetching) {
       throw StateError('A fetch request is already in progress. Please wait.');
     }
@@ -118,12 +125,16 @@ class UploadService {
       if (!forceRefresh) {
         final cachedData = prefs.getString('gallery_cache');
         if (cachedData != null) {
+          // If we have cache and are not forced to refresh, return it instantly!
+          // No API call is made. User must click Refresh to see images from other devices.
+          return jsonDecode(cachedData);
+        }
+      } else {
+        final cachedData = prefs.getString('gallery_cache');
+        if (cachedData != null) {
           cachedList = jsonDecode(cachedData);
         }
         lastSync = prefs.getString('gallery_last_sync');
-      } else {
-        await prefs.remove('gallery_cache');
-        await prefs.remove('gallery_last_sync');
       }
 
       final Map<String, String> headers = {};
@@ -165,6 +176,7 @@ class UploadService {
           await prefs.setString('gallery_last_sync', DateTime.now().toUtc().toIso8601String());
         }
         
+        _lastFetchTime = DateTime.now().millisecondsSinceEpoch;
         return cachedList;
       } else {
         throw Exception('Failed to fetch photos: ${response.statusCode}');
