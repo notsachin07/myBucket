@@ -174,21 +174,6 @@ class UploadService {
     }
   }
 
-  /// Batch fetch presigned URLs for lazy loading
-  static Future<Map<String, dynamic>> fetchPresignedUrls(String apiUrl, List<Map<String, String>> files) async {
-    final response = await http.post(
-      Uri.parse('$apiUrl?action=presign'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'files': files}),
-    );
-
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return data['presignedUrls'] ?? {};
-    } else {
-      throw Exception('Failed to fetch presigned URLs: ${response.body}');
-    }
-  }
 
   static Future<void> deleteFile({
     required String apiUrl,

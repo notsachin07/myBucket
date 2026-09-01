@@ -183,21 +183,7 @@ const ApiService = {
     }
   },
 
-  // Batch fetch presigned URLs for lazy loading
-  fetchPresignedUrls: async (apiUrl, files) => {
-    const response = await fetch(apiUrl + '?action=presign', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ files })
-    });
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch presigned URLs: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return data.presignedUrls || {};
-  },
 
   // Delete file
   deleteFile: async (apiUrl, fileName, folderPath) => {

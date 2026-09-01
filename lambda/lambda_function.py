@@ -41,9 +41,6 @@ def lambda_handler(event, context):
     elif http_method == 'DELETE':
         return handle_delete(event)
     elif http_method == 'POST':
-        query_params = event.get('queryStringParameters') or {}
-        if query_params.get('action') == 'presign':
-            return handle_presign(event)
         return handle_post(event)
     else:
         return {'statusCode': 405, 'body': 'Method Not Allowed'}
@@ -107,49 +104,6 @@ def handle_get(event):
             })
         }
 
-def handle_presign(event):
-    try:
-        body = json.loads(event.get('body', '{}'))
-        files_to_presign = body.get('files', [])
-        
-        bucket_name = os.environ.get('S3_BUCKET_NAME')
-        
-        presigned_urls = {}
-        for f in files_to_presign:
-            file_name = f.get('fileName')
-            folder_path = f.get('folderPath')
-            if not file_name or not folder_path:
-                continue
-                
-            folder_path = folder_path.rstrip('/')
-            s3_key = f"{folder_path}/{file_name}"
-            
-            presigned_url = s3_client.generate_presigned_url(
-                'get_object',
-                Params={'Bucket': bucket_name, 'Key': s3_key},
-                ExpiresIn=900 # 15 minutes
-            )
-            
-            dict_key = f"{folder_path}/{file_name}"
-            presigned_urls[dict_key] = presigned_url
-            
-        return {
-            'statusCode': 200,
-            'headers': {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type',
-                'Access-Control-Allow-Methods': 'OPTIONS,GET,POST,DELETE'
-            },
-            'body': json.dumps({'presignedUrls': presigned_urls})
-        }
-    except Exception as e:
-        print("Error in presign:", str(e))
-        traceback.print_exc()
-        return {
-            'statusCode': 500,
-            'headers': {'Access-Control-Allow-Origin': '*'},
-            'body': json.dumps({'message': 'Internal Server Error in PRESIGN'})
-        }
 
 def handle_post(event):
     try:

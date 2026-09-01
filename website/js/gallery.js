@@ -71,38 +71,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // Setup Intersection Observer for Lazy Presigning
-  const observer = new IntersectionObserver((entries) => {
-    const toPresign = [];
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        const img = entry.target;
-        if (img.dataset.loaded !== 'true') {
-          toPresign.push({ 
-            img: img, 
-            fileName: img.dataset.fileName, 
-            folderPath: img.dataset.folderPath 
-          });
-          img.dataset.loaded = 'pending';
-        }
-      }
-    });
 
-    if (toPresign.length > 0) {
-      const payload = toPresign.map(item => ({ fileName: item.fileName, folderPath: item.folderPath }));
-      ApiService.fetchPresignedUrls(apiUrl, payload).then(urls => {
-        toPresign.forEach(item => {
-          const key = item.folderPath + '/' + item.fileName;
-          if (urls[key]) {
-            item.img.src = urls[key];
-            item.img.dataset.loaded = 'true';
-          } else {
-            item.img.dataset.loaded = 'error';
-          }
-        });
-      }).catch(console.error);
-    }
-  }, { rootMargin: "100px" });
 
   const renderGallery = (files) => {
     // Group by folder
@@ -143,11 +112,9 @@ document.addEventListener('DOMContentLoaded', () => {
         item.className = 'grid-item';
         
         const img = document.createElement('img');
-        // Lazy load: no src initially, just dataset
-        img.dataset.fileName = file.fileName;
-        img.dataset.folderPath = file.folderPath;
-        img.dataset.loaded = 'false';
+        img.src = file.s3Url;
         img.alt = file.fileName;
+        img.loading = 'lazy';
         
         // Handle broken images
         img.onerror = () => {
@@ -162,22 +129,9 @@ document.addEventListener('DOMContentLoaded', () => {
         item.appendChild(img);
         item.appendChild(label);
         
-        item.addEventListener('click', async () => {
-          // If they click, make sure they have a presigned URL
-          if (img.dataset.loaded !== 'true') {
-            const urls = await ApiService.fetchPresignedUrls(apiUrl, [{ fileName: file.fileName, folderPath: file.folderPath }]);
-            const key = file.folderPath + '/' + file.fileName;
-            file.previewUrl = urls[key];
-          } else {
-            file.previewUrl = img.src;
-          }
-          openDetailModal(file);
-        });
+        item.addEventListener('click', () => openDetailModal(file));
         
         grid.appendChild(item);
-        
-        // Observe image for lazy presigning
-        observer.observe(img);
       });
 
       section.appendChild(header);
@@ -189,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Modal Logic
   const openDetailModal = (file) => {
     currentSelectedFile = file;
-    detailImg.src = file.previewUrl || file.s3Url;
+    detailImg.src = file.s3Url;
     detailName.textContent = file.fileName;
     detailFolder.textContent = file.folderPath;
     detailDate.textContent = formatDate(file.uploadedAt);
